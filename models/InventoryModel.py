@@ -1,9 +1,12 @@
+'''this file is contain all models which is connected to database table'''
 from db import db
 import os, maya
 from datetime import datetime
 import pytz
 import logging
-logger=logging.getLogger('InventoryApi.InventoryModel')
+
+logger = logging.getLogger('InventoryApi.InventoryModel')
+
 
 class InventoryModel(db.Model):
     __tablename__ = "inventory"
@@ -50,7 +53,7 @@ class InventoryModel(db.Model):
 
     @classmethod
     def find_by_id(cls, _id):
-        return cls.query.filter_by(inventory_id=_id).first()
+        return cls.query.filter_by(inventory_id=_id, status="Active").first()
 
     def insert(self):
         db.session.add(self)

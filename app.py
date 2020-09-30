@@ -19,15 +19,11 @@ app.config['SQLALCHEMY_DATABASE_URI']="mysql+pymysql://root:@localhost/inventory
 app.config['PROPAGATE_EXCEPTION']=True
 app.secret_key="something"
 
-@app.before_first_request
-def create_table():
-    logger.info('Creating database table')
-    db.create_all()
-
 api.add_resource(Inventory,'/inventory')
 
 if __name__=="__main__":
     from db import db
     db.init_app(app)
+
     logger.info('Starting Inventory API')
     app.run(debug=True)
