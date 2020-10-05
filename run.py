@@ -1,4 +1,4 @@
-'''this file is created for testing purpose'''
+'''this file is created for testing & deploying purpose'''
 from app import app
 from db import db
 
