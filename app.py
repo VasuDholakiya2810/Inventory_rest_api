@@ -24,6 +24,5 @@ api.add_resource(Inventory,'/inventory')
 if __name__=="__main__":
     from db import db
     db.init_app(app)
-
     logger.info('Starting Inventory API')
     app.run(debug=True)
