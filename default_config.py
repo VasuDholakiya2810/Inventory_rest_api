@@ -1,0 +1,8 @@
+import os
+
+DEBUG = True
+SQLALCHEMY_TRACK_MODIFICATIONS= False
+SQLALCHEMY_DATABASE_URI=os.getenv('DATABASE_URL')
+PROPAGATE_EXCEPTION=True
+SECRET_KEY = os.getenv('APP_SECRET_KEY')
+UPLOADED_IMAGES_DEST = os.path.join("static", "images")

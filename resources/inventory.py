@@ -1,107 +1,165 @@
-'''this file contains all resources and endpoints'''
-from flask_restful import Resource, request
-from models.InventoryModel import InventoryModel
-import maya, json
+""" Inventory Inventory, InventoryUpdate and InventoryDelete Resources."""
+from flask import request, Response
+from flask_restful import Resource
+import maya
 import logging
-logger=logging.getLogger('InventoryApi.InventoryResource')
+from marshmallow import ValidationError
+from sqlalchemy.exc import IntegrityError
+
+from models.InventoryModel import InventoryModel
+from schema.inventory_schema import InventorySchema, InventoryDetail
+from services.image_store import delete_image
+from schema.inventory_update_schema import InventoryUpdateSchema
+from schema.inventory_delete_schema import InventoryDeleteSchema
+from common.constant import (INSERTED_SUCCESSFULLY,
+                             INTERNAL_SERVER_ERROR,
+                             NO_ITEM_FOUND,
+                             UPDATED_SUCCESSFULLY,
+                             DELETED_SUCCESSFULLY,
+                             CATEGORY_NOT_EXISTS
+                             )
+
+insert_schema = InventoryDetail()
+get_schema = InventorySchema()
+update_schema = InventoryUpdateSchema()
+delete_schema = InventoryDeleteSchema()
+logger = logging.getLogger('InventoryApi.InventoryResource')
+
 
 class Inventory(Resource):
-    ALLOWED_IMAGE_EXTENSIONS = ["JPEG", "JPG", "PNG", "GIF"]
-    def post(self):
+    """ Get and Post Inventory"""
+
+    @classmethod
+    def post(cls):
+        request_data = request.get_json()
         try:
             logger.info('getting data from user request.')
-            data = json.loads(request.form.get('data'))
-            manufacturing_date = maya.parse(data['manufacturing_date']).datetime(to_timezone='US/Central')
-            image = request.files.get('Image')
-            extension=image.filename.split('.',1)[1]
-            expiry_date = data.get('expiry_date', None)
-            if image and extension.upper() in Inventory.ALLOWED_IMAGE_EXTENSIONS:
-                path = InventoryModel.image_save(image)
-            else:
-                return {"message":'only image file allowed'},400
-            logger.info('initialize data in InventoryModel')
-            if expiry_date:
-                expiry_date = maya.parse(data['expiry_date']).datetime(to_timezone='US/Central')
-                inventory_item = InventoryModel(data['inventory_name'], data['inventory_category'], data['quantity'],
-                                                manufacturing_date, expiry_date, path)
-            else:
-                inventory_item = InventoryModel(data['inventory_name'], data['inventory_category'], data['quantity'],
-                                                manufacturing_date, expiry_date, path)
+            data = insert_schema.load(request_data)
 
-            inventory_item.insert()
-            return {"message": "insert successfully", "image_path": path},201
+            expiry_date = data.get('expiry_date')
+            manufacturing_date = maya.parse(data['manufacturing_date']).datetime(to_timezone='US/Central')
+            if expiry_date:
+                expiry_date = maya.parse(data['expiry_date']).datetime(
+                    to_timezone='US/Central')
+
+            logger.info('initialize data in InventoryModel')
+            inventory_item = InventoryModel(data['inventory_name'], data['inventory_category'], data['quantity'],
+                                            manufacturing_date, expiry_date)
+
+            _id = inventory_item.insert()
+            return {"message": INSERTED_SUCCESSFULLY, "Inventory_id": _id}, 201
+
+        except IntegrityError as err:
+            logging.error(err)
+            return {"message": CATEGORY_NOT_EXISTS.format(request_data['inventory_category'])}, 404
+
+        except ValidationError as err:
+            return err.messages, 400
+
         except Exception as e:
             logging.error(e)
-            return {"message":"!!oops something went wrong"}, 503
+            return {"message": INTERNAL_SERVER_ERROR}, 500
 
-    def put(self):
+    @classmethod
+    def get(cls):
         try:
-            logger.info('loading data from request.')
-            data = json.loads(request.form.get('data'))
-            logger.info("fetch relevant data from database")
-            inventory = InventoryModel.find_by_id(data['id'])
+            name = request.args.get('inventory_name', type=str)
+            category = request.args.get('category', type=str)
+            timezone = request.args.get('timezone')
+
+            if name and category:
+                logger.info('filtering data with name and category parameter')
+                inventory_list = InventoryModel.find_by_name_and_category(name, category)
+
+                if inventory_list:
+                    inventories = [inventory.check_expired(inventory.expiry_date, timezone) for inventory in
+                                   inventory_list]
+                    response_data = {"inventories": inventories}
+                    return Response(InventorySchema().dumps(response_data), mimetype="application/json")
+
+                return {"message": NO_ITEM_FOUND}, 404
+
+            elif name:
+                logger.info('filtering data with name parameter')
+                inventory_list = InventoryModel.find_by_name(name)
+                if inventory_list:
+                    inventories = [inventory.check_expired(inventory.expiry_date, timezone) for inventory in
+                                   inventory_list]
+                    response_data = {"inventories": inventories}
+                    return Response(InventorySchema().dumps(response_data), mimetype="application/json")
+
+                return {"message": NO_ITEM_FOUND}, 404
+
+            elif category:
+                logger.info('filtering data with name parameter')
+                inventory_list = InventoryModel.find_by_category(category)
+                if inventory_list:
+                    inventories = [inventory.check_expired(inventory.expiry_date, timezone) for inventory in
+                                   inventory_list]
+                    response_data = {"inventories": inventories}
+                    return Response(InventorySchema().dumps(response_data), mimetype="application/json")
+
+                return {"message": NO_ITEM_FOUND}, 404
+
+            return {"message": NO_ITEM_FOUND}, 404
+        except Exception as e:
+            logging.error(e)
+            return {"message": INTERNAL_SERVER_ERROR}, 500
+
+
+class InventoryUpdate(Resource):
+    """ Update Inventory"""
+
+    @classmethod
+    def put(cls):
+        request_data = request.get_json()
+        logger.info('loading data from request.')
+        try:
+            data = update_schema.load(request_data)
+            inventory = InventoryModel.find_by_id(data['inventory_id'])
             if inventory:
                 inventory.quantity = data['quantity']
                 logger.info('updating data to database.')
                 inventory.insert()
-                return {"message": "updated successfully"}
-            return {"message": "no match found"},404
-        except Exception as e:
-            logger.error(e)
-            return {"message":"!!oops something went wrong"},503
+                return {"message": UPDATED_SUCCESSFULLY}, 201
+            logger.info("fetch relevant data from database")
+            return {"message": NO_ITEM_FOUND}, 404
 
-    def delete(self):
+        except ValidationError as err:
+            return err.messages, 400
+
+        except Exception as e:
+            logging.error(e)
+            return {"message": INTERNAL_SERVER_ERROR}, 500
+
+
+class InventoryDelete(Resource):
+    """ Delete Inventory """
+
+    @classmethod
+    def delete(cls):
         try:
-            logger.info('loading data from request.')
-            data = json.loads(request.form['data'])
+            request_data = request.get_json()
+            data = delete_schema.load(request_data)
             logger.info("fetch relevant data from database")
             inventories = InventoryModel.find_by_name(data['inventory_name'])
+
             if inventories:
                 for inventory in inventories:
                     logger.info('deleting data from database')
-                    InventoryModel.delete_record(inventory.img_url)
+                    if inventory.img_url:
+                        delete_image(inventory.img_url)
                     inventory.img_url = None
                     inventory.status = "deleted"
                     inventory.insert()
-                return {"message": "deleted successfully"}
-            return {"message": "inventory not found"}, 404
+
+                return {"message": DELETED_SUCCESSFULLY.format(inventories[0].inventory_name)}, 200
+
+            return {"message": NO_ITEM_FOUND}, 404
+
+        except ValidationError as err:
+            return err.messages, 400
+
         except Exception as e:
             logger.error(e)
-            return {"message":"!!oops something went wrong"},503
-
-    def get(self):
-        name = request.args.get('inventory_name', type=str, default=0)
-        category = request.args.get('category', type=str, default=0)
-        timezone = request.args.get('timezone', default=0)
-        if name and category:
-            logger.info('filtering data with name and category parameter')
-            inventories_list = InventoryModel.find_by_name_and_category(name, category)
-            if inventories_list:
-                inventories = [inventory.check_expired(inventory.expiry_date, timezone) for inventory in
-                               inventories_list]
-
-                return {"inventories": [inventory.json() for inventory in inventories]}
-            return {"message": "no match found"}, 404
-
-        elif name:
-            logger.info('filtering data with name parameter')
-            inventories_list = InventoryModel.find_by_name(name)
-            if inventories_list:
-                inventories = [inventory.check_expired(inventory.expiry_date, timezone) for inventory in
-                               inventories_list]
-
-                return {"inventories": [inventory.json() for inventory in inventories]}
-            return {"message": "no match found"}, 404
-
-
-        elif category:
-            logger.info('filtering data with name parameter')
-            inventories_list = InventoryModel.find_by_category(category)
-            if inventories_list:
-                inventories = [inventory.check_expired(inventory.expiry_date, timezone) for inventory in
-                               inventories_list]
-
-                return {"inventories": [inventory.json() for inventory in inventories]}
-            return {"message": "no match found"}, 404
-
-        return {"message": "no match found"}, 404
+            return {"message": INTERNAL_SERVER_ERROR}, 500
