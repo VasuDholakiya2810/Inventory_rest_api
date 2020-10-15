@@ -13,7 +13,7 @@ class CategoryModel(db.Model):
     @classmethod
     def find_by_name(cls, category: str) -> "CategoryModel":
         """ :returns class Category object after applying filter"""
-
+        
         return cls.query.filter_by(inventory_category=category).all()
 
     def save(self):

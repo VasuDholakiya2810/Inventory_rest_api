@@ -2,18 +2,15 @@
 import maya
 from datetime import datetime
 import pytz
-import logging
 from typing import List
 
 from db import db
 
-logger = logging.getLogger('InventoryApi.InventoryModel')
 
 
 class InventoryModel(db.Model):
     __tablename__ = "inventory"
 
-    logger.info('mapping objects with database table')
     inventory_id = db.Column(db.Integer, primary_key=True)
     inventory_name = db.Column(db.String(80))
     inventory_category = db.Column(db.String(80), db.ForeignKey('category.inventory_category'))
@@ -69,7 +66,6 @@ class InventoryModel(db.Model):
     def check_expired(self, expiry_date, zone) -> "InventoryModel":
         """ check inventory expired or not!!"""
 
-        logger.info('checking for expired inventories')
         if expiry_date:
             if zone:
                 expiry = maya.parse(expiry_date).datetime()

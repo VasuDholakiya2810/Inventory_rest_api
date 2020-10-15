@@ -8,6 +8,7 @@ import os
 from schema.image_schema import ImageSchema
 from services import image_store
 from models.InventoryModel import InventoryModel
+from common.logger_config import logger
 from common.constant import (
     INTERNAL_SERVER_ERROR,
     IMAGE_PATH,
@@ -16,20 +17,25 @@ from common.constant import (
     NOT_VALID_EXTENSION
 )
 
+
 image_schema = ImageSchema()
 
 
 class ImageUpload(Resource):
+    """ ImageUpload Resource"""
+
     @classmethod
     def post(cls, inventory_id: int):
         request_image = request.files
 
         try:
+            logger.info('Fetching Inventory')
             inventory = InventoryModel.find_by_id(inventory_id)
             if inventory:
                 if inventory.img_url:
                     return {"message": IMAGE_ALREADY_EXISTS}, 400
                 image = image_schema.load(request_image)
+                logger.info('Saving Image')
                 image_name = image_store.save_image(image['image'])
                 inventory.img_url = image_name
                 inventory.insert()
@@ -46,5 +52,5 @@ class ImageUpload(Resource):
             return {"message": NOT_VALID_EXTENSION.format(extension)}, 400
 
         except Exception as err:
-            print(err)
+            logger.error(err)
             return {"message": INTERNAL_SERVER_ERROR}, 500

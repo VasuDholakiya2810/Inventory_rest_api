@@ -14,3 +14,4 @@ NOT_VALID_EXTENSION = "{} not valid extension"
 CATEGORY_CREATED_SUCCESSFULLY = '{} category created successfully'
 CATEGORY_ALREADY_EXISTS = '{} category already exists'
 CATEGORY_NOT_EXISTS='{} category not exists'
+CATEGORY_NOT_FOUND='{} category not found'
